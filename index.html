@@ -28,10 +28,10 @@
 -->
 
 <!-- Tailwind CSS vía CDN: utilidades de diseño responsivo sin build step -->
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://tailwindcss.com"></script>
 
 <!-- sql.js vía CDN: motor SQLite compilado a WebAssembly para el navegador -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="https://cloudflare.com"></script>
 
 <style>
   /* Pequeños ajustes que Tailwind no cubre directamente */
@@ -157,251 +157,43 @@
 
 <script>
 /* ===========================================================================
-   LÓGICA DE LA APLICACIÓN
-   ---------------------------------------------------------------------------
-   Aquí es donde sql.js (SQLite compilado a WebAssembly) se conecta con la
-   interfaz HTML. La idea central para los estudiantes es:
+   LÓGICA DE LA APLICACIÓN ACTUALIZADA CON LECTURA JSON
+   --------------------------------------------------------------------------- */
+  let db;
+  const dbStatus = document.getElementById('db-status');
+  const formEstudiante = document.getElementById('form-estudiante');
+  const tablaBody = document.getElementById('tabla-body');
+  const contador = document.getElementById('contador');
+  const btnExportar = document.getElementById('btn-exportar');
+  const inputCargar = document.getElementById('input-cargar');
 
-     1. `initSqlJs()` descarga/inicializa el motor SQLite (el archivo .wasm).
-     2. `new SQL.Database()` crea una base de datos SQLite EN MEMORIA
-        (un objeto JS que internamente es un arreglo de bytes binarios
-        con el mismo formato que un archivo .sqlite real).
-     3. Ejecutamos sentencias SQL normales (CREATE TABLE, INSERT, SELECT...)
-        exactamente como lo harían en Python, PostgreSQL, etc.
-     4. Cada vez que la base de datos cambia, releemos los datos con SELECT
-        y "repintamos" la tabla HTML — la interfaz es solo un espejo del
-        estado real de la base de datos.
-   ===========================================================================
-*/
+  // Ajusta estos valores con tus datos reales observados en tu pantalla
+  const USUARIO_GITHUB = "edmarquis1";
+  const NOMBRE_REPO = "programacion-avansada";
+  const JSON_URL = `https://${USUARIO_GITHUB}.github.io/${NOMBRE_REPO}/estudiantes.json`;
 
-// Referencias a elementos del DOM que usaremos varias veces
-const dbStatusEl   = document.getElementById('db-status');
-const formEl       = document.getElementById('form-estudiante');
-const tablaBodyEl  = document.getElementById('tabla-body');
-const contadorEl   = document.getElementById('contador');
-const toastEl      = document.getElementById('toast');
-const inputCargarEl = document.getElementById('input-cargar');
-
-let SQL = null; // Módulo sql.js ya inicializado (fábrica de bases de datos)
-let db  = null;  // Instancia activa de la base de datos SQLite en memoria
-
-// -----------------------------------------------------------------------
-// Utilidad: mostrar una notificación breve al usuario (sin usar alert()).
-// -----------------------------------------------------------------------
-function mostrarToast(mensaje) {
-  toastEl.textContent = mensaje;
-  toastEl.style.opacity = '1';
-  toastEl.style.transform = 'translate(-50%, -8px)';
-  clearTimeout(mostrarToast._t);
-  mostrarToast._t = setTimeout(() => {
-    toastEl.style.opacity = '0';
-    toastEl.style.transform = 'translate(-50%, 0)';
-  }, 1800);
-}
-
-// -----------------------------------------------------------------------
-// PASO 1: Inicializar el motor sql.js (WebAssembly) al cargar la página.
-// initSqlJs necesita saber dónde encontrar el archivo .wasm; se lo
-// indicamos apuntando al mismo CDN que usamos para el <script>.
-// -----------------------------------------------------------------------
-async function iniciarApp() {
-  try {
-    SQL = await initSqlJs({
-      locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
-    });
-
-    crearBaseDeDatosNueva(); // No hay archivo cargado aún: empezamos limpio
-    dbStatusEl.textContent = '✅ SQLite listo (en memoria)';
-  } catch (err) {
-    console.error(err);
-    dbStatusEl.textContent = '⚠️ Error al cargar sql.js';
-    mostrarToast('No se pudo inicializar el motor SQLite. Revisa tu conexión.');
-  }
-}
-
-// -----------------------------------------------------------------------
-// Crea una base de datos SQLite en memoria y la tabla "estudiantes".
-// Se usa tanto al arrancar la app como cuando el usuario carga un archivo
-// nuevo que resulta no tener la tabla esperada.
-// -----------------------------------------------------------------------
-function crearBaseDeDatosNueva() {
-  db = new SQL.Database();
-  // CREATE TABLE IF NOT EXISTS: SQL estándar, igual que en cualquier motor.
-  db.run(`
-    CREATE TABLE IF NOT EXISTS estudiantes (
-      id      INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre  TEXT NOT NULL,
-      materia TEXT NOT NULL,
-      nota    INTEGER NOT NULL
-    );
-  `);
-  refrescarTabla();
-}
-
-// -----------------------------------------------------------------------
-// PASO 2: Leer todos los registros de la tabla y "pintar" el <tbody>.
-// db.exec() devuelve un arreglo de resultados; cada resultado tiene
-// { columns: [...], values: [[...], [...]] } — es la forma nativa en que
-// sql.js entrega los datos de un SELECT.
-// -----------------------------------------------------------------------
-function refrescarTabla() {
-  const resultado = db.exec('SELECT id, nombre, materia, nota FROM estudiantes ORDER BY id DESC;');
-
-  tablaBodyEl.innerHTML = ''; // Limpiamos la tabla antes de repintar
-
-  if (resultado.length === 0) {
-    tablaBodyEl.innerHTML = `
-      <tr><td colspan="5" class="px-3 py-6 text-center text-slate-400">
-        Aún no hay estudiantes registrados.
-      </td></tr>`;
-    contadorEl.textContent = '0 registros';
-    return;
+  function mostrarToast(mensaje) {
+    const toast = document.getElementById('toast');
+    toast.innerText = mensaje;
+    toast.classList.remove('opacity-0', 'pointer-events-none');
+    toast.classList.add('opacity-100');
+    setTimeout(() => {
+      toast.classList.remove('opacity-100');
+      toast.classList.add('opacity-0', 'pointer-events-none');
+    }, 2500);
   }
 
-  const filas = resultado[0].values; // arreglo de arreglos: [id, nombre, materia, nota]
-  contadorEl.textContent = `${filas.length} registro${filas.length === 1 ? '' : 's'}`;
+  // Inicializar sql.js e intentar precargar el JSON remoto del repositorio
+  initSqlJs({ locateFile: file => `https://cloudflare.com{file}` }).then(async SQL => {
+    db = new SQL.Database();
+    db.run("CREATE TABLE IF NOT EXISTS estudiantes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, materia TEXT, nota INTEGER);");
+    
+    dbStatus.innerText = "⚡ Motor SQLite Listo";
+    dbStatus.className = "text-xs sm:text-sm bg-emerald-600 px-3 py-1 rounded-full whitespace-nowrap text-white font-medium";
 
-  for (const [id, nombre, materia, nota] of filas) {
-    const tr = document.createElement('tr');
-    tr.className = 'hover:bg-slate-50';
-    tr.innerHTML = `
-      <td class="px-3 py-2 text-slate-400">${id}</td>
-      <td class="px-3 py-2 font-medium">${escapeHtml(nombre)}</td>
-      <td class="px-3 py-2">${escapeHtml(materia)}</td>
-      <td class="px-3 py-2">
-        <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${colorNota(nota)}">${nota}</span>
-      </td>
-      <td class="px-3 py-2 text-right">
-        <button data-id="${id}" class="btn-borrar text-red-500 hover:text-red-700 text-xs font-medium">
-          Eliminar
-        </button>
-      </td>`;
-    tablaBodyEl.appendChild(tr);
-  }
-
-  // Los botones "Eliminar" se crean dinámicamente, así que enlazamos sus
-  // eventos aquí, después de insertarlos en el DOM.
-  document.querySelectorAll('.btn-borrar').forEach(btn => {
-    btn.addEventListener('click', () => eliminarEstudiante(Number(btn.dataset.id)));
-  });
-}
-
-// Pequeña ayuda visual: colorea la nota según su valor
-function colorNota(nota) {
-  if (nota >= 51) return 'bg-emerald-100 text-emerald-700';
-  if (nota >= 30) return 'bg-amber-100 text-amber-700';
-  return 'bg-red-100 text-red-700';
-}
-
-// Evita inyección de HTML si el nombre/materia contiene caracteres especiales
-function escapeHtml(texto) {
-  const div = document.createElement('div');
-  div.textContent = texto;
-  return div.innerHTML;
-}
-
-// -----------------------------------------------------------------------
-// PASO 3: Insertar un nuevo estudiante (usamos sentencias PREPARADAS con
-// parámetros "?" para evitar inyección SQL, igual que se recomienda en
-// cualquier lenguaje de backend).
-// -----------------------------------------------------------------------
-formEl.addEventListener('submit', (e) => {
-  e.preventDefault();
-
-  const nombre  = document.getElementById('input-nombre').value.trim();
-  const materia = document.getElementById('input-materia').value.trim();
-  const nota    = Number(document.getElementById('input-nota').value);
-
-  if (!nombre || !materia || Number.isNaN(nota)) {
-    mostrarToast('Completa todos los campos correctamente.');
-    return;
-  }
-
-  db.run('INSERT INTO estudiantes (nombre, materia, nota) VALUES (?, ?, ?);', [nombre, materia, nota]);
-
-  formEl.reset();
-  document.getElementById('input-nombre').focus();
-  refrescarTabla();
-  mostrarToast('Estudiante guardado ✔');
-});
-
-// -----------------------------------------------------------------------
-// Eliminar un registro por id (DELETE parametrizado)
-// -----------------------------------------------------------------------
-function eliminarEstudiante(id) {
-  db.run('DELETE FROM estudiantes WHERE id = ?;', [id]);
-  refrescarTabla();
-  mostrarToast('Registro eliminado');
-}
-
-// -----------------------------------------------------------------------
-// PASO 4: Exportar la base de datos como archivo .sqlite descargable.
-// db.export() devuelve un Uint8Array con los bytes EXACTOS del archivo
-// SQLite (el mismo formato binario que usa SQLite en cualquier lenguaje).
-// Lo envolvemos en un Blob y simulamos un click en un <a download>.
-// -----------------------------------------------------------------------
-document.getElementById('btn-exportar').addEventListener('click', () => {
-  try {
-    const bytes = db.export();
-    const blob = new Blob([bytes], { type: 'application/x-sqlite3' });
-    const url = URL.createObjectURL(blob);
-
-    const fecha = new Date().toISOString().slice(0, 10);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `estudiantes_${fecha}.sqlite`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
-    mostrarToast('Base de datos exportada ⬇️');
-  } catch (err) {
-    console.error(err);
-    mostrarToast('No se pudo exportar la base de datos.');
-  }
-});
-
-// -----------------------------------------------------------------------
-// PASO 5: Cargar un archivo .sqlite existente desde el dispositivo.
-// Leemos el archivo como ArrayBuffer y se lo pasamos a `new SQL.Database()`
-// como bytes crudos: sql.js reconstruye la base de datos completa a partir
-// de ese binario, tal como lo haría el propio SQLite al abrir un archivo.
-// -----------------------------------------------------------------------
-inputCargarEl.addEventListener('change', async (e) => {
-  const archivo = e.target.files[0];
-  if (!archivo) return;
-
-  try {
-    const buffer = await archivo.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-
-    // Reemplazamos la base de datos en memoria por la del archivo cargado
-    db = new SQL.Database(bytes);
-
-    // Por seguridad, garantizamos que la tabla exista (si el archivo
-    // cargado no la tenía, la creamos vacía en vez de fallar).
-    db.run(`
-      CREATE TABLE IF NOT EXISTS estudiantes (
-        id      INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre  TEXT NOT NULL,
-        materia TEXT NOT NULL,
-        nota    INTEGER NOT NULL
-      );
-    `);
-
-    refrescarTabla();
-    mostrarToast('Base de datos cargada ⬆️');
-  } catch (err) {
-    console.error(err);
-    mostrarToast('El archivo no es una base de datos SQLite válida.');
-  } finally {
-    inputCargarEl.value = ''; // Permite volver a cargar el mismo archivo si se desea
-  }
-});
-
-// Arrancamos la aplicación en cuanto el script se ejecuta
-iniciarApp();
-</script>
-</body>
-</html>
+    // Intentar leer estudiantes.json del repositorio e insertarlos en la base de datos de memoria
+    try {
+      const res = await fetch(`${JSON_URL}?t=${Date.now()}`);
+      if (res.ok) {
+        const estudiantesJson = await res.json();
+        if (Array.isArray(estudiantesJson)) {
