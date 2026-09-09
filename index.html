@@ -31,7 +31,8 @@
 <script src="https://tailwindcss.com"></script>
 
 <!-- sql.js vía CDN: motor SQLite compilado a WebAssembly para el navegador -->
-<script src="https://cloudflare.com"></script>
+<!-- Supabase JS Client vía CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
   /* Pequeños ajustes que Tailwind no cubre directamente */
@@ -242,6 +243,10 @@
 
 <script>
   let db;
+  const SUPABASE_URL = 'https://rqzpiyuhnofujgzxvwmf.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxenBpeXVobm9mdWpnenh2d21mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NDE0ODEsImV4cCI6MjA5NTMxNzQ4MX0.wPf5wTaD2fzpX9d35WByb4If9GAu7SOOqkj0-ft-VqI';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
   const dbStatus = document.getElementById('db-status');
   const formEstudiante = document.getElementById('form-estudiante');
   const tablaBody = document.getElementById('tabla-body');
