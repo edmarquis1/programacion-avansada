@@ -5,126 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Registro de Estudiantes — SQLite en el Navegador</title>
 
-<!--
-  =========================================================================
-  SISTEMA DE REGISTRO DE ESTUDIANTES CON SQLite EN EL NAVEGADOR (sql.js)
-  =========================================================================
-  Este archivo es 100% autocontenido: HTML + CSS (Tailwind vía CDN) + JS.
-  No necesita servidor ni instalación: se abre directamente en cualquier
-  navegador (móvil o escritorio) y funciona de inmediato.
-
-  ¿Cómo funciona sql.js?
-  - sql.js es SQLite compilado a WebAssembly (WASM). Es decir, es el mismo
-    motor SQLite "de verdad" pero corriendo dentro del navegador, sin
-    backend ni instalación.
-  - La base de datos vive en la MEMORIA RAM del navegador (un objeto
-    JavaScript). Al cerrar o recargar la página, se pierde, a menos que el
-    usuario la exporte a un archivo .sqlite (botón "Exportar DB").
-  - Para persistir o compartir datos, el usuario exporta un archivo binario
-    .sqlite real (idéntico a uno generado por SQLite en Python, C, etc.) y
-    luego puede volver a "Cargar" ese mismo archivo para continuar
-    trabajando donde lo dejó.
-  =========================================================================
--->
-
-<!-- Tailwind CSS vía CDN: utilidades de diseño responsivo sin build step -->
-<script src="https://tailwindcss.com"></script>
-
-<!-- sql.js vía CDN: motor SQLite compilado a WebAssembly para el navegador -->
-<!-- Supabase JS Client vía CDN -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<style>
-  /* Pequeños ajustes que Tailwind no cubre directamente */
-  body { -webkit-tap-highlight-color: transparent; }
-  ::-webkit-scrollbar { height: 8px; width: 8px; }
-  ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
-  .toast {
-    transition: opacity 0.3s ease, transform 0.3s ease;
-  }
-</style>
-</head>
-
-<body class="min-h-screen bg-slate-100 text-slate-800 antialiased">
-
-  <!-- ===================== ENCABEZADO ===================== -->
-  <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-20">
-    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-      <div>
-        <h1 class="text-lg sm:text-2xl font-bold leading-tight">📚 Registro de Estudiantes</h1>
-        <p class="text-indigo-200 text-xs sm:text-sm">SQLite corriendo 100% en tu navegador (sql.js)</p>
-      </div>
-      <span id="db-status" class="text-xs sm:text-sm bg-indigo-800/60 px-3 py-1 rounded-full whitespace-nowrap">
-        Cargando motor…
-      </span>
-    </div>
-  </header>
-
-  <main class="max-w-5xl mx-auto p-4 space-y-6">
-
-    <!-- ===================== FORMULARIO DE REGISTRO ===================== -->
-    <section class="bg-white rounded-2xl shadow p-4 sm:p-6">
-      <h2 class="text-base sm:text-lg font-semibold mb-4 text-slate-700">➕ Nuevo estudiante</h2>
-
-      <!-- Este formulario no envía datos a ningún servidor: al hacer submit,
-           JavaScript toma los valores y ejecuta un INSERT sobre la base de
-           datos SQLite que vive en memoria (ver función guardarEstudiante). -->
-      <form id="form-estudiante" class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <div class="sm:col-span-2">
-          <label class="block text-xs font-medium text-slate-500 mb-1">Nombre</label>
-          <input id="input-nombre" type="text" required placeholder="Ej: Ana Gómez"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1">Materia</label>
-          <input id="input-materia" type="text" required placeholder="Ej: Bases de Datos"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-slate-500 mb-1">Nota</label>
-          <input id="input-nota" type="number" min="0" max="100" required placeholder="0-100"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-        </div>
-        <div class="sm:col-span-4 flex justify-end">
-          <button type="submit"
-            class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition text-white font-medium px-5 py-2.5 rounded-lg text-sm shadow">
-            Guardar estudiante
-          </button>
-        </div>
-      </form>
-    </section>
-
-    <!-- ===================== TABLA DE REGISTROS ===================== -->
-    <section class="bg-white rounded-2xl shadow p-4 sm:p-6">
-      <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <h2 class="text-base sm:text-lg font-semibold text-slate-700">📋 Estudiantes registrados</h2>
-        <span id="contador" class="text-xs text-slate-400">0 registros</span>
-      </div>
-
-      <div class="overflow-x-auto rounded-lg border border-slate-200">
-        <table class="w-full text-sm text-left">
-          <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
-            <tr>
-              <th class="px-3 py-2">ID</th>
-              <th class="px-3 py-2">Nombre</th>
-              <th class="px-3 py-2">Materia</th>
-              <th class="px-3 py-2">Nota</th>
-              <th class="px-3 py-2 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <!-- El <tbody> se reconstruye por completo cada vez que cambia la
-               base de datos (ver función refrescarTabla). Esto mantiene la
-               interfaz siempre sincronizada con lo que realmente hay en
-               SQLite, en lugar de manipular el DOM manualmente registro por
-               registro. -->
-          <tbody id="tabla-body" class="divide-y divide-slate-100">
-            <tr><td colspan="5" class="px-3 py-6 text-center text-slate-400">Iniciando base de datos…</td></tr><!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Registro de Estudiantes — SQLite en el Navegador</title>
-
 <!-- Tailwind CSS vía CDN -->
 <script src="https://cdn.tailwindcss.com"></script>
 
@@ -135,9 +15,7 @@
   body { -webkit-tap-highlight-color: transparent; }
   ::-webkit-scrollbar { height: 8px; width: 8px; }
   ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
-  .toast {
-    transition: opacity 0.3s ease, transform 0.3s ease;
-  }
+  .toast { transition: opacity 0.3s ease, transform 0.3s ease; }
 </style>
 </head>
 
@@ -237,16 +115,12 @@
     </p>
   </main>
 
-  <!-- Notificación flotante (toast) para confirmar acciones -->
+  <!-- Notificación flotante (toast) -->
   <div id="toast" class="toast fixed bottom-4 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none
-       bg-slate-900 text-white text-sm px-4 py-2 rounded-full shadow-lg z-50"></div>
+     bg-slate-900 text-white text-sm px-4 py-2 rounded-full shadow-lg z-50"></div>
 
 <script>
   let db;
-  const SUPABASE_URL = 'https://rqzpiyuhnofujgzxvwmf.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxenBpeXVobm9mdWpnenh2d21mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NDE0ODEsImV4cCI6MjA5NTMxNzQ4MX0.wPf5wTaD2fzpX9d35WByb4If9GAu7SOOqkj0-ft-VqI';
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
   const dbStatus = document.getElementById('db-status');
   const formEstudiante = document.getElementById('form-estudiante');
   const tablaBody = document.getElementById('tabla-body');
@@ -356,7 +230,7 @@
     refrescarTabla();
   };
 
-  // Botón EXPORTAR: Descarga la base de datos RAM a un archivo binario físico .sqlite
+  // Botón EXPORTAR
   btnExportar.addEventListener('click', () => {
     if (!db) return;
     const binario = db.export();
@@ -372,7 +246,7 @@
     mostrarToast("⬇️ Archivo .sqlite descargado con éxito");
   });
 
-  // Botón CARGAR: Lee un archivo .sqlite externo y lo monta sobre la memoria RAM actual
+  // Botón CARGAR
   inputCargar.addEventListener('change', (e) => {
     const archivo = e.target.files[0];
     if (!archivo) return;
@@ -396,84 +270,3 @@
 </script>
 </body>
 </html>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- ===================== IMPORTAR / EXPORTAR ARCHIVO .sqlite ===================== -->
-    <section class="bg-white rounded-2xl shadow p-4 sm:p-6">
-      <h2 class="text-base sm:text-lg font-semibold mb-1 text-slate-700">💾 Archivo de base de datos</h2>
-      <p class="text-xs text-slate-400 mb-4">
-        Exporta un archivo .sqlite real para guardar tu progreso, o carga uno existente para continuar.
-      </p>
-      <div class="flex flex-col sm:flex-row gap-3">
-        <button id="btn-exportar"
-          class="flex-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition text-white font-medium px-4 py-2.5 rounded-lg text-sm shadow">
-          ⬇️ Exportar DB (.sqlite)
-        </button>
-
-        <!-- El botón visible dispara un <input type="file"> oculto:
-             así logramos un botón bonito y consistente con el resto del
-             diseño en vez del <input> nativo del navegador. -->
-        <label for="input-cargar"
-          class="flex-1 text-center cursor-pointer bg-slate-600 hover:bg-slate-700 active:scale-95 transition text-white font-medium px-4 py-2.5 rounded-lg text-sm shadow">
-          ⬆️ Cargar DB
-        </label>
-        <input id="input-cargar" type="file" accept=".sqlite,.db,.sqlite3" class="hidden">
-      </div>
-    </section>
-
-    <p class="text-center text-xs text-slate-400 pb-6">
-      Los datos viven en la memoria del navegador (WebAssembly). Exporta el archivo para no perder tu trabajo.
-    </p>
-  </main>
-
-  <!-- Notificación flotante (toast) para confirmar acciones -->
-  <div id="toast" class="toast fixed bottom-4 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none
-       bg-slate-900 text-white text-sm px-4 py-2 rounded-full shadow-lg z-50"></div>
-
-<script>
-/* ===========================================================================
-   LÓGICA DE LA APLICACIÓN
-   ---------------------------------------------------------------------------
-   Aquí es donde sql.js (SQLite compilado a WebAssembly) se conecta con la
-   interfaz HTML.
-   =========================================================================== */
-  let db;
-  const dbStatus = document.getElementById('db-status');
-  const formEstudiante = document.getElementById('form-estudiante');
-  const tablaBody = document.getElementById('tabla-body');
-  const contador = document.getElementById('contador');
-  const btnExportar = document.getElementById('btn-exportar');
-  const inputCargar = document.getElementById('input-cargar');
-
-  // Configuración de rutas para sincronizar con tu JSON de GitHub Pages
-  const USUARIO_GITHUB = "edmarquis1";
-  const NOMBRE_REPO = "programacion-avansada";
-  const JSON_URL = `https://${USUARIO_GITHUB}.github.io/${NOMBRE_REPO}/estudiantes.json`;
-
-  function mostrarToast(mensaje) {
-    const toast = document.getElementById('toast');
-    toast.innerText = mensaje;
-    toast.classList.remove('opacity-0', 'pointer-events-none');
-    toast.classList.add('opacity-100');
-    setTimeout(() => {
-      toast.classList.remove('opacity-100');
-      toast.classList.add('opacity-0', 'pointer-events-none');
-    }, 2500);
-  }
-
-  // Inicializar sql.js e importar automáticamente el archivo JSON de tu repositorio
-  initSqlJs({ locateFile: file => `https://cloudflare.com{file}` }).then(async SQL => {
-    db = new SQL.Database();
-    db.run("CREATE TABLE IF NOT EXISTS estudiantes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, materia TEXT, nota INTEGER);");
-    
-    dbStatus.innerText = "⚡ Motor SQLite Listo";
-    dbStatus.className = "text-xs sm:text-sm bg-emerald-600 px-3 py-1 rounded-full whitespace-nowrap text-white font-medium";
-
-    // Función que lee los datos del JSON compartido en GitHub Pages
-    try {
-      const res = await fetch(`${JSON_URL}?t=${Date.now()}`);
-      if (res.ok) {
-Usa el código con precaución.const estudiantesJson = await res.json();if (Array.isArray(estudiantesJson)) {estudiantesJson.forEach(est => {db.run("INSERT INTO estudiantes (nombre, materia, nota) VALUES (?, ?, ?);", [est.nombre, est.materia, est.nota]);});mostrarToast("📋 Datos cargados automáticamente desde GitHub Pages");}}} catch (e) {console.log("Aún no se encuentra estudiantes.json o está vacío. Iniciando localmente.");}refrescarTabla();}).catch(err => {dbStatus.innerText = "❌ Error al cargar WASM";console.error(err);});// Reconstruir la tabla HTML leyendo directamente desde SQLite en memoriafunction refrescarTabla() {if (!db) return;tablaBody.innerHTML = "";const res = db.exec("SELECT * FROM estudiantes ORDER BY id DESC");if (res.length === 0 || res.values.length === 0) {tablaBody.innerHTML = <tr><td colspan="5" class="px-3 py-6 text-center text-slate-400">No hay estudiantes registrados todavía.</td></tr>;contador.innerText = "0 registros";return;}const filas = res.values;filas.forEach(fila => {const [id, nombre, materia, nota] = fila;const tr = document.createElement('tr');tr.className = 'hover:bg-slate-50 transition-colors text-slate-700 text-sm';tr.innerHTML = `#${id}${nombre}${materia}`;tablaBody.appendChild(tr);});contador.innerText = ${filas.length} ${filas.length === 1 ? 'registro' : 'registros'};}// Insertar un nuevo estudiante en SQLite al enviar el formularioformEstudiante.addEventListener('submit', (e) => {e.preventDefault();if (!db) return;const nombre = document.getElementById('input-nombre').value.trim();const materia = document.getElementById('input-materia').value.trim();const nota = parseInt(document.getElementById('input-nota').value);db.run("INSERT INTO estudiantes (nombre, materia, nota) VALUES (?, ?, ?);", [nombre, materia, nota]);mostrarToast("📝 Estudiante guardado en SQLite local");formEstudiante.reset();document.getElementById('input-nombre').focus();refrescarTabla();});// Eliminar estudiante por IDwindow.eliminarEstudiante = function(id) {if (!db) return;db.run("DELETE FROM estudiantes WHERE id = ?;", [id]);mostrarToast("🗑️ Registro eliminado");refrescarTabla();};// Botón EXPORTAR: Descarga la base de datos RAM a un archivo binario físico .sqlitebtnExportar.addEventListener('click', () => {if (!db) return;const binario = db.export();const blob = new Blob([binario], { type: "application/x-sqlite3" });const url = URL.createObjectURL(blob);const a = document.createElement('a');a.href = url;a.download = "registro_estudiantes.sqlite";document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);mostrarToast("⬇️ Archivo .sqlite descargado con éxito");});// Botón CARGAR: Lee un archivo .sqlite externo y lo monta sobre la memoria RAM actualinputCargar.addEventListener('change', (e) => {const archivo = e.target.files;if (!archivo) return;const reader = new FileReader();reader.onload = function() {try {const Uints = new Uint8Array(this.result);initSqlJs({ locateFile: file => https://cloudflare.com{file} }).then(SQL => {db = new SQL.Database(Uints);mostrarToast("⬆️ Base de datos cargada correctamente");refrescarTabla();});} catch (err) {mostrarToast("❌ Archivo .sqlite inválido o corrupto");console.error(err);}};reader.readAsArrayBuffer(archivo);});
